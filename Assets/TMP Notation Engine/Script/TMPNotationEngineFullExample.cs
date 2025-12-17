@@ -69,7 +69,7 @@ public class TMPNotationEngineFullExample : MonoBehaviour
     private void ShowHeader()
     {
         if (headerText == null) return;
-        headerText.text = "TMPNotationEngine - All Features Demo".FormatForTMP();
+        headerText.text = "TMPNotationEngine - All Features Demo".ToFormatTMP();
     }
 
     private void ShowMathematicsExamples()
@@ -178,11 +178,11 @@ public class TMPNotationEngineFullExample : MonoBehaviour
     {
         if (extensionsText == null) return;
 
-        string line1 = "Manual Super: " + "2".ToSuperscript() + " and " + "3".ToSuperscript();
-        string line2 = "Manual Sub: x" + "1".ToSubscript() + " + x" + "2".ToSubscript();
-        string line3 = "Fraction: " + "a+b".ToFraction("c+d");
-        string line4 = "Auto Format: " + "E = mc^2".FormatForTMP();
-        string line5 = "Chemistry: " + "H2O + CO2".FormatForTMP();
+        string line1 = "Manual Super: " + "2".ToSuperscriptTMP() + " and " + "3".ToSuperscriptTMP();
+        string line2 = "Manual Sub: x" + "1".ToSubscriptTMP() + " + x" + "2".ToSubscriptTMP();
+        string line3 = "Fraction: " + "a+b".ToFractionTMP("c+d");
+        string line4 = "Auto Format: " + "E = mc^2".ToFormatTMP();
+        string line5 = "Chemistry: " + "H2O + CO2".ToFormatTMP();
 
         extensionsText.text = $@"<b>Extension Methods:</b>
 
@@ -228,9 +228,9 @@ No Chemistry: {custom2}";
     {
         if (utilityText == null) return;
 
-        string formatted = "x^2 + H2O".FormatForTMP();
-        string stripped = formatted.StripTMPTags();
-        bool hasFormat = formatted.HasTMPFormatting();
+        string formatted = "x^2 + H2O".ToFormatTMP();
+        string stripped = formatted.ToPlainTextTMP();
+        bool hasFormat = formatted.HasFormattingTMP();
 
         utilityText.text = $@"<b>Utility Methods:</b>
 
@@ -238,8 +238,8 @@ Formatted: {formatted}
 Stripped: {stripped}
 Has Formatting: {hasFormat}
 
-Check: '{"plain"}' = {("plain".HasTMPFormatting())}
-Check: '{formatted}' = {formatted.HasTMPFormatting()}";
+Check: '{"plain"}' = {("plain".HasFormattingTMP())}
+Check: '{formatted}' = {formatted.HasFormattingTMP()}";
     }
 
     #endregion Example Sections

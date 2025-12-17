@@ -19,13 +19,13 @@ public class TMPNotationEngineSimpleExample : MonoBehaviour
     private void Start()
     {
         // Example 1: Auto-format math expression
-        equationText.text = dataText.FormatForTMP();
+        equationText.text = dataText.ToFormatTMP();
 
         // Example 2: Chemistry + math together
-        equationText2.text = dataText2.FormatForTMP();
+        equationText2.text = dataText2.ToFormatTMP();
 
         // Example 3: Fractions and subscripts
-        equationText3.text = dataText3.FormatForTMP();
+        equationText3.text = dataText3.ToFormatTMP();
 
         // Example 4 & 5: Customizing superscript and subscript sizes
         TMPNotationEngine.FormatConfig formatConfig = new TMPNotationEngine.FormatConfig();
@@ -33,9 +33,9 @@ public class TMPNotationEngineSimpleExample : MonoBehaviour
         formatConfig.SubscriptSize = 100;   // Set subscript size to 100% of normal text size
 
         // Example 4: Superscripts
-        equationText4.text = dataText4.FormatForTMP(formatConfig);
+        equationText4.text = dataText4.ToFormatTMP(formatConfig);
 
         // Example 5: Subscripts
-        equationText5.text = dataText5.FormatForTMP(formatConfig);
+        equationText5.text = dataText5.ToFormatTMP(formatConfig);
     }
 }

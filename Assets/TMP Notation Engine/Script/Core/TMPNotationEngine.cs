@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -14,9 +15,28 @@ namespace AbS
 
         public class FormatConfig
         {
-            public float SuperscriptSize { get; set; } = 60f;
-            public float SubscriptSize { get; set; } = 60f;
-            public float FractionSize { get; set; } = 70f;
+            private float _superscriptSize = 60f;
+            private float _subscriptSize = 60f;
+            private float _fractionSize = 70f;
+
+            public float SuperscriptSize
+            {
+                get => _superscriptSize;
+                set => _superscriptSize = value > 0 && value <= 200 ? value : 60f;
+            }
+
+            public float SubscriptSize
+            {
+                get => _subscriptSize;
+                set => _subscriptSize = value > 0 && value <= 200 ? value : 60f;
+            }
+
+            public float FractionSize
+            {
+                get => _fractionSize;
+                set => _fractionSize = value > 0 && value <= 200 ? value : 70f;
+            }
+
             public bool EnableCaretNotation { get; set; } = true;
             public bool EnableUnicodeConversion { get; set; } = true;
             public bool EnableChemicalFormulas { get; set; } = true;
@@ -47,6 +67,57 @@ namespace AbS
             {'ₖ', "k"}, {'ₗ', "l"}, {'ₘ', "m"}, {'ₙ', "n"}, {'ₚ', "p"},
             {'ₛ', "s"}, {'ₜ', "t"}
         };
+
+        // Thread-safe lazy initialization of reverse mappings
+        private static readonly Lazy<Dictionary<string, char>> _reverseSuperscriptMap =
+            new Lazy<Dictionary<string, char>>(() =>
+            {
+                var dict = new Dictionary<string, char>();
+                foreach (var kvp in SuperscriptMap)
+                {
+                    dict[kvp.Value] = kvp.Key;
+                }
+                return dict;
+            });
+
+        private static readonly Lazy<Dictionary<string, char>> _reverseSubscriptMap =
+            new Lazy<Dictionary<string, char>>(() =>
+            {
+                var dict = new Dictionary<string, char>();
+                foreach (var kvp in SubscriptMap)
+                {
+                    dict[kvp.Value] = kvp.Key;
+                }
+                return dict;
+            });
+
+        private static Dictionary<string, char> ReverseSuperscriptMap => _reverseSuperscriptMap.Value;
+        private static Dictionary<string, char> ReverseSubscriptMap => _reverseSubscriptMap.Value;
+
+        #endregion
+
+        #region Compiled Regex Patterns
+
+        private static readonly Regex CaretNotationRegex =
+            new Regex(@"\^(\{[^}]+\}|\([^)]+\)|[\w\-+]+)", RegexOptions.Compiled);
+
+        private static readonly Regex UnderscoreSubscriptRegex =
+            new Regex(@"_(\{[^}]+\}|\([^)]+\)|[\w\-+]+)", RegexOptions.Compiled);
+
+        private static readonly Regex FractionRegex =
+            new Regex(@"(\([^)]+\)|\{[^}]+\}|\d+)/(\([^)]+\)|\{[^}]+\}|\d+)", RegexOptions.Compiled);
+
+        private static readonly Regex ChemicalFormulaRegex =
+            new Regex(@"(?<!<[^>]*)([A-Z][a-z]?)(\d+)(?![^<]*>)", RegexOptions.Compiled);
+
+        private static readonly Regex SuperscriptTagRegex =
+            new Regex(@"<sup><size=\d+%>([^<]+)</size></sup>", RegexOptions.Compiled);
+
+        private static readonly Regex SubscriptTagRegex =
+            new Regex(@"<sub><size=\d+%>([^<]+)</size></sub>", RegexOptions.Compiled);
+
+        private static readonly Regex AllTagsRegex =
+            new Regex(@"<[^>]+>", RegexOptions.Compiled);
 
         #endregion
 
@@ -94,6 +165,8 @@ namespace AbS
         /// </summary>
         public static string Superscript(string text, float size = 60f)
         {
+            if (string.IsNullOrEmpty(text))
+                return text;
             return $"<sup><size={size}%>{text}</size></sup>";
         }
 
@@ -102,6 +175,8 @@ namespace AbS
         /// </summary>
         public static string Subscript(string text, float size = 60f)
         {
+            if (string.IsNullOrEmpty(text))
+                return text;
             return $"<sub><size={size}%>{text}</size></sub>";
         }
 
@@ -110,6 +185,8 @@ namespace AbS
         /// </summary>
         public static string Fraction(string numerator, string denominator, float size = 70f)
         {
+            if (string.IsNullOrEmpty(numerator) || string.IsNullOrEmpty(denominator))
+                return $"{numerator}/{denominator}";
             return $"{Superscript(numerator, size)}/{Subscript(denominator, size)}";
         }
 
@@ -141,15 +218,23 @@ namespace AbS
 
         private static void ConvertCaretNotation(StringBuilder text, FormatConfig config)
         {
-            // Pattern: x^2, x^-2, x^(n+1), e^{2x}
-            string pattern = @"\^(\{[^}]+\}|\([^)]+\)|[\w\-+]+)";
             string input = text.ToString();
 
-            string result = Regex.Replace(input, pattern, match =>
+            string result = CaretNotationRegex.Replace(input, match =>
             {
                 string content = match.Groups[1].Value;
+
+                // Handle empty content (edge case: x^)
+                if (string.IsNullOrEmpty(content))
+                    return match.Value;
+
                 // Remove braces or parentheses if present
                 content = content.Trim('{', '}', '(', ')');
+
+                // Validate content is not empty after trimming
+                if (string.IsNullOrEmpty(content))
+                    return match.Value;
+
                 return Superscript(content, config.SuperscriptSize);
             });
 
@@ -159,14 +244,22 @@ namespace AbS
 
         private static void ConvertUnderscoreSubscript(StringBuilder text, FormatConfig config)
         {
-            // Pattern: x_1, x_{n+1}, a_(i,j)
-            string pattern = @"_(\{[^}]+\}|\([^)]+\)|[\w\-+]+)";
             string input = text.ToString();
 
-            string result = Regex.Replace(input, pattern, match =>
+            string result = UnderscoreSubscriptRegex.Replace(input, match =>
             {
                 string content = match.Groups[1].Value;
+
+                // Handle empty content (edge case: x_)
+                if (string.IsNullOrEmpty(content))
+                    return match.Value;
+
                 content = content.Trim('{', '}', '(', ')');
+
+                // Validate content is not empty after trimming
+                if (string.IsNullOrEmpty(content))
+                    return match.Value;
+
                 return Subscript(content, config.SubscriptSize);
             });
 
@@ -176,14 +269,17 @@ namespace AbS
 
         private static void ConvertFractions(StringBuilder text, FormatConfig config)
         {
-            // Pattern: 1/2, (a+b)/(c+d), {numerator}/{denominator}
-            string pattern = @"(\([^)]+\)|\{[^}]+\}|\d+)/(\([^)]+\)|\{[^}]+\}|\d+)";
             string input = text.ToString();
 
-            string result = Regex.Replace(input, pattern, match =>
+            string result = FractionRegex.Replace(input, match =>
             {
                 string num = match.Groups[1].Value.Trim('(', ')', '{', '}');
                 string den = match.Groups[2].Value.Trim('(', ')', '{', '}');
+
+                // Validate both parts exist
+                if (string.IsNullOrEmpty(num) || string.IsNullOrEmpty(den))
+                    return match.Value;
+
                 return Fraction(num, den, config.FractionSize);
             });
 
@@ -193,12 +289,9 @@ namespace AbS
 
         private static void ConvertChemicalFormulas(StringBuilder text, FormatConfig config)
         {
-            // Pattern: H2O, CO2, Ca(OH)2 - numbers after letters become subscripts
-            // Avoid already formatted text (contains '<')
-            string pattern = @"(?<!<[^>]*)([A-Z][a-z]?)(\d+)(?![^<]*>)";
             string input = text.ToString();
 
-            string result = Regex.Replace(input, pattern, match =>
+            string result = ChemicalFormulaRegex.Replace(input, match =>
             {
                 string element = match.Groups[1].Value;
                 string number = match.Groups[2].Value;
@@ -214,14 +307,106 @@ namespace AbS
         #region Utility Methods
 
         /// <summary>
-        /// Remove all TMP tags from text
+        /// Remove all TMP tags from text (converts to plain text)
         /// </summary>
-        public static string StripTags(string text)
+        public static string PlainText(string text)
         {
             if (string.IsNullOrEmpty(text))
                 return text;
 
-            return Regex.Replace(text, @"<[^>]+>", string.Empty);
+            return AllTagsRegex.Replace(text, string.Empty);
+        }
+
+        /// <summary>
+        /// Convert TMP formatted text back to Unicode representation
+        /// Example: "A<sub><size=60%>0</size></sub>" → "A₀"
+        /// </summary>
+        public static string Unicode(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return text;
+
+            string result = text;
+
+            // Convert superscript tags back to Unicode
+            result = SuperscriptTagRegex.Replace(result, match =>
+            {
+                string content = match.Groups[1].Value;
+
+                // Try to convert single characters
+                if (content.Length == 1 && ReverseSuperscriptMap.TryGetValue(content, out char unicodeChar))
+                {
+                    return unicodeChar.ToString();
+                }
+
+                // Try to convert each character in multi-char content
+                StringBuilder sb = new StringBuilder();
+                bool allConverted = true;
+
+                foreach (char c in content)
+                {
+                    string charStr = c.ToString();
+                    if (ReverseSuperscriptMap.TryGetValue(charStr, out char unicode))
+                    {
+                        sb.Append(unicode);
+                    }
+                    else
+                    {
+                        allConverted = false;
+                        break;
+                    }
+                }
+
+                // If all characters converted successfully, use Unicode version
+                if (allConverted && sb.Length > 0)
+                {
+                    return sb.ToString();
+                }
+
+                // Otherwise, just strip tags and return plain content
+                return content;
+            });
+
+            // Convert subscript tags back to Unicode
+            result = SubscriptTagRegex.Replace(result, match =>
+            {
+                string content = match.Groups[1].Value;
+
+                // Try to convert single characters
+                if (content.Length == 1 && ReverseSubscriptMap.TryGetValue(content, out char unicodeChar))
+                {
+                    return unicodeChar.ToString();
+                }
+
+                // Try to convert each character in multi-char content
+                StringBuilder sb = new StringBuilder();
+                bool allConverted = true;
+
+                foreach (char c in content)
+                {
+                    string charStr = c.ToString();
+                    if (ReverseSubscriptMap.TryGetValue(charStr, out char unicode))
+                    {
+                        sb.Append(unicode);
+                    }
+                    else
+                    {
+                        allConverted = false;
+                        break;
+                    }
+                }
+
+                // If all characters converted successfully, use Unicode version
+                if (allConverted && sb.Length > 0)
+                {
+                    return sb.ToString();
+                }
+
+                // Otherwise, just strip tags and return plain content
+                return content;
+            });
+
+            return result;
         }
 
         /// <summary>
@@ -237,19 +422,81 @@ namespace AbS
         }
 
         /// <summary>
-        /// Convert plain text numbers to superscript
+        /// Check if text contains Unicode superscript characters
         /// </summary>
-        public static string ToSuperscript(string text, float size = 60f)
+        public static bool HasUnicodeSuperscript(string text)
         {
-            return Superscript(text, size);
+            if (string.IsNullOrEmpty(text))
+                return false;
+
+            foreach (char c in text)
+            {
+                if (SuperscriptMap.ContainsKey(c))
+                    return true;
+            }
+
+            return false;
         }
 
         /// <summary>
-        /// Convert plain text numbers to subscript
+        /// Check if text contains Unicode subscript characters
         /// </summary>
-        public static string ToSubscript(string text, float size = 60f)
+        public static bool HasUnicodeSubscript(string text)
         {
-            return Subscript(text, size);
+            if (string.IsNullOrEmpty(text))
+                return false;
+
+            foreach (char c in text)
+            {
+                if (SubscriptMap.ContainsKey(c))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Check if text contains any Unicode superscript or subscript characters
+        /// </summary>
+        public static bool HasUnicodeScripts(string text)
+        {
+            return HasUnicodeSuperscript(text) || HasUnicodeSubscript(text);
+        }
+
+        /// <summary>
+        /// Get all Unicode superscript characters found in text
+        /// </summary>
+        public static List<char> GetUnicodeSuperscripts(string text)
+        {
+            List<char> found = new List<char>();
+            if (string.IsNullOrEmpty(text))
+                return found;
+
+            foreach (char c in text)
+            {
+                if (SuperscriptMap.ContainsKey(c) && !found.Contains(c))
+                    found.Add(c);
+            }
+
+            return found;
+        }
+
+        /// <summary>
+        /// Get all Unicode subscript characters found in text
+        /// </summary>
+        public static List<char> GetUnicodeSubscripts(string text)
+        {
+            List<char> found = new List<char>();
+            if (string.IsNullOrEmpty(text))
+                return found;
+
+            foreach (char c in text)
+            {
+                if (SubscriptMap.ContainsKey(c) && !found.Contains(c))
+                    found.Add(c);
+            }
+
+            return found;
         }
 
         #endregion
@@ -260,59 +507,109 @@ namespace AbS
     public static class TMPTextExtensions
     {
         /// <summary>
-        /// Format string using TMPTextFormatter with default config
+        /// Format string using TMPNotationEngine with default config
         /// </summary>
-        public static string FormatForTMP(this string text)
+        public static string ToFormatTMP(this string text)
         {
-            return TMPNotationEngine.Format(text);
+            return text == null ? null : TMPNotationEngine.Format(text);
         }
 
         /// <summary>
         /// Format string with custom config
         /// </summary>
-        public static string FormatForTMP(this string text, TMPNotationEngine.FormatConfig config)
+        public static string ToFormatTMP(this string text, TMPNotationEngine.FormatConfig config)
         {
-            return TMPNotationEngine.Format(text, config);
-        }
-
-        /// <summary>
-        /// Remove all TMP tags from text
-        /// </summary>
-        public static string StripTMPTags(this string text)
-        {
-            return TMPNotationEngine.StripTags(text);
-        }
-
-        /// <summary>
-        /// Check if text contains TMP formatting
-        /// </summary>
-        public static bool HasTMPFormatting(this string text)
-        {
-            return TMPNotationEngine.HasFormatting(text);
+            return text == null ? null : TMPNotationEngine.Format(text, config);
         }
 
         /// <summary>
         /// Convert text to superscript format
         /// </summary>
-        public static string ToSuperscript(this string text, float size = 60f)
+        public static string ToSuperscriptTMP(this string text, float size = 60f)
         {
-            return TMPNotationEngine.Superscript(text, size);
+            return text == null ? null : TMPNotationEngine.Superscript(text, size);
         }
 
         /// <summary>
         /// Convert text to subscript format
         /// </summary>
-        public static string ToSubscript(this string text, float size = 60f)
+        public static string ToSubscriptTMP(this string text, float size = 60f)
         {
-            return TMPNotationEngine.Subscript(text, size);
+            return text == null ? null : TMPNotationEngine.Subscript(text, size);
         }
 
         /// <summary>
         /// Create fraction from numerator and denominator
         /// </summary>
-        public static string ToFraction(this string numerator, string denominator, float size = 70f)
+        public static string ToFractionTMP(this string numerator, string denominator, float size = 70f)
         {
             return TMPNotationEngine.Fraction(numerator, denominator, size);
+        }
+
+        /// <summary>
+        /// Convert TMP formatted text back to Unicode representation
+        /// Example: "A<sub><size=60%>0</size></sub>" → "A₀"
+        /// </summary>
+        public static string ToUnicodeTMP(this string text)
+        {
+            return text == null ? null : TMPNotationEngine.Unicode(text);
+        }
+
+        /// <summary>
+        /// Convert TMP formatted text to plain text (strips all formatting)
+        /// Example: "A<sub><size=60%>0</size></sub>" → "A0"
+        /// </summary>
+        public static string ToPlainTextTMP(this string text)
+        {
+            return text == null ? null : TMPNotationEngine.PlainText(text);
+        }
+
+        /// <summary>
+        /// Check if text contains TMP formatting
+        /// </summary>
+        public static bool HasFormattingTMP(this string text)
+        {
+            return TMPNotationEngine.HasFormatting(text);
+        }
+
+        /// <summary>
+        /// Check if text contains Unicode superscript characters
+        /// </summary>
+        public static bool HasUnicodeSuperscriptTMP(this string text)
+        {
+            return TMPNotationEngine.HasUnicodeSuperscript(text);
+        }
+
+        /// <summary>
+        /// Check if text contains Unicode subscript characters
+        /// </summary>
+        public static bool HasUnicodeSubscriptTMP(this string text)
+        {
+            return TMPNotationEngine.HasUnicodeSubscript(text);
+        }
+
+        /// <summary>
+        /// Check if text contains any Unicode superscript or subscript characters
+        /// </summary>
+        public static bool HasUnicodeScriptsTMP(this string text)
+        {
+            return TMPNotationEngine.HasUnicodeScripts(text);
+        }
+
+        /// <summary>
+        /// Get all Unicode superscript characters found in text
+        /// </summary>
+        public static List<char> GetUnicodeSuperscriptsTMP(this string text)
+        {
+            return TMPNotationEngine.GetUnicodeSuperscripts(text);
+        }
+
+        /// <summary>
+        /// Get all Unicode subscript characters found in text
+        /// </summary>
+        public static List<char> GetUnicodeSubscriptsTMP(this string text)
+        {
+            return TMPNotationEngine.GetUnicodeSubscripts(text);
         }
     }
 
@@ -321,54 +618,127 @@ namespace AbS
 
 #region Usage Examples
 /*
-// BASIC USAGE:
-using TextFormatting;
+===================================================================================
+BASIC USAGE
+===================================================================================
+using AbS;  // Add this namespace to your script
 
 // Simple formatting with defaults
-string formatted = TMPTextFormatter.Format("x^2 + H2O → CO2");
+string formatted = TMPNotationEngine.Format("x^2 + H2O → CO2");
 tmpText.text = formatted;
 
 // Using extension method
-tmpText.text = "E = mc^2".FormatForTMP();
+tmpText.text = "E = mc^2".ToFormatTMP();
 
-// CUSTOM CONFIGURATION:
-var config = new TMPTextFormatter.FormatConfig
+===================================================================================
+CUSTOM CONFIGURATION
+===================================================================================
+var config = new TMPNotationEngine.FormatConfig
 {
     SuperscriptSize = 50f,
     SubscriptSize = 55f,
     EnableChemicalFormulas = true
 };
-tmpText.text = TMPTextFormatter.Format("H2SO4 + x^2", config);
+tmpText.text = TMPNotationEngine.Format("H2SO4 + x^2", config);
 
-// MANUAL FORMATTING:
-string super = TMPTextFormatter.Superscript("2");
-string sub = TMPTextFormatter.Subscript("0");
-string fraction = TMPTextFormatter.Fraction("a+b", "c+d");
+===================================================================================
+MANUAL FORMATTING
+===================================================================================
+string super = TMPNotationEngine.Superscript("2");
+string sub = TMPNotationEngine.Subscript("0");
+string fraction = TMPNotationEngine.Fraction("a+b", "c+d");
 
-// SUPPORTED PATTERNS:
-// Caret: x^2, x^-3, x^(n+1), e^{2x}
-// Underscore: x_1, x_{n+1}, a_(i,j)
-// Unicode: x² x₂ (automatic conversion)
-// Fractions: 1/2, (a+b)/(c+d)
-// Chemistry: H2O, CO2, Ca(OH)2
+===================================================================================
+SUPPORTED PATTERNS
+===================================================================================
+Caret Notation:    x^2, x^-3, x^(n+1), e^{2x}
+Underscore:        x_1, x_{n+1}, a_(i,j)
+Unicode:           x² x₂ (automatic conversion)
+Fractions:         1/2, (a+b)/(c+d)
+Chemistry:         H2O, CO2, Ca(OH)2
 
-// UTILITY METHODS:
-bool hasFormat = TMPTextFormatter.HasFormatting(text);
-string plain = TMPTextFormatter.StripTags(formattedText);
+===================================================================================
+UTILITY METHODS
+===================================================================================
+// Check for formatting
+bool hasFormat = TMPNotationEngine.HasFormatting(text);
 
-// EXTENSION METHODS - Math/Scientific formatting:
-string superscript = "2".ToSuperscript();  // <sup><size=60%>2</size></sup>
-string subscript = "n".ToSubscript();      // <sub><size=60%>n</size></sub>
-string fraction = "a+b".ToFraction("c+d"); // Fraction format
+// Convert to plain text
+string plain = TMPNotationEngine.PlainText(formattedText);
+
+// Check for Unicode characters
+bool hasSuperUnicode = TMPNotationEngine.HasUnicodeSuperscript("x²y³");     // true
+bool hasSubUnicode = TMPNotationEngine.HasUnicodeSubscript("H₂O");          // true
+bool hasAnyUnicode = TMPNotationEngine.HasUnicodeScripts("x²₁");            // true
+
+// Get specific Unicode characters found
+List<char> supers = TMPNotationEngine.GetUnicodeSuperscripts("x²y³z⁴");    // ['²', '³', '⁴']
+List<char> subs = TMPNotationEngine.GetUnicodeSubscripts("H₂O + CO₂");     // ['₂']
+
+===================================================================================
+CONVERSION METHODS
+===================================================================================
+// Convert TMP formatted text back to Unicode
+string formatted = "A<sub><size=60%>0</size></sub>";
+string unicode = TMPNotationEngine.Unicode(formatted);      // "A₀"
+
+string formatted2 = "x<sup><size=60%>2</size></sup>";
+string unicode2 = TMPNotationEngine.Unicode(formatted2);    // "x²"
+
+// Convert to plain text (strips formatting)
+string plainText = TMPNotationEngine.PlainText(formatted);  // "A0"
+
+// Round-trip example
+string original = "H₂O";
+string tmpFormatted = TMPNotationEngine.Format(original);     // "H<sub><size=60%>2</size></sub>O"
+string backToUnicode = TMPNotationEngine.Unicode(tmpFormatted); // "H₂O"
+
+===================================================================================
+EXTENSION METHODS - Math/Scientific formatting
+===================================================================================
+string superscript = "2".ToSuperscriptTMP();      // <sup><size=60%>2</size></sup>
+string subscript = "n".ToSubscriptTMP();          // <sub><size=60%>n</size></sub>
+string fraction = "a+b".ToFractionTMP("c+d");     // Fraction format
 
 // Auto-format mathematical expressions
-tmpText.text = "x^2 + H2O".FormatForTMP();
+tmpText.text = "x^2 + H2O".ToFormatTMP();
+
+// Check Unicode using extensions
+bool hasSuper = "x²y³".HasUnicodeSuperscriptTMP();  // true
+bool hasSub = "H₂O".HasUnicodeSubscriptTMP();        // true
+bool hasAny = "x²₁".HasUnicodeScriptsTMP();          // true
+
+// Get Unicode characters using extensions
+List<char> foundSupers = "x²y³".GetUnicodeSuperscriptsTMP();
+List<char> foundSubs = "H₂O".GetUnicodeSubscriptsTMP();
+
+// Convert back to Unicode using extensions
+string formattedText = "A<sub><size=60%>0</size></sub>";
+string unicodeText = formattedText.ToUnicodeTMP();   // "A₀"
+string plainOnly = formattedText.ToPlainTextTMP();   // "A0"
 
 // Strip formatting for plain text
-string plainText = formattedText.StripTMPTags();
-bool hasFormatting = text.HasTMPFormatting();
+string stripped = formattedText.ToPlainTextTMP();
+bool hasFormatting = text.HasFormattingTMP();
 
 // Fluent chaining
-string equation = "E=mc^2".FormatForTMP();
+string equation = "E=mc^2".ToFormatTMP();
+
+===================================================================================
+ADVANCED EXAMPLES
+===================================================================================
+// Complex mathematical expressions
+string math = "∫(x^2 + 2x + 1)dx = x^3/3 + x^2 + x + C".ToFormatTMP();
+
+// Chemical reactions
+string chem = "2H2 + O2 → 2H2O".ToFormatTMP();
+
+// Physics formulas
+string physics = "F = G(m_1*m_2)/r^2".ToFormatTMP();
+
+// Mixed notation
+string mixed = "x₁² + y^2 = r²".ToFormatTMP();
+
+===================================================================================
 */
 #endregion
