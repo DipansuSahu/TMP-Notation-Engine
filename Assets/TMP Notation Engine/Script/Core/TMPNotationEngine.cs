@@ -306,6 +306,134 @@ namespace AbS
 
         #region Utility Methods
 
+        #region Pattern Detection Methods
+
+        /// <summary>
+        /// Check if text contains TMP formatting
+        /// </summary>
+        public static bool HasFormatting(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return false;
+
+            return text.Contains("<sup>") || text.Contains("<sub>") ||
+                   text.Contains("<size=");
+        }
+
+        /// <summary>
+        /// Check if text contains Unicode superscript characters
+        /// </summary>
+        public static bool HasUnicodeSuperscript(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return false;
+
+            foreach (char c in text)
+            {
+                if (SuperscriptMap.ContainsKey(c))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Check if text contains Unicode subscript characters
+        /// </summary>
+        public static bool HasUnicodeSubscript(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return false;
+
+            foreach (char c in text)
+            {
+                if (SubscriptMap.ContainsKey(c))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Check if text contains any Unicode superscript or subscript characters
+        /// </summary>
+        public static bool HasUnicodeScripts(string text)
+        {
+            return HasUnicodeSuperscript(text) || HasUnicodeSubscript(text);
+        }
+
+        /// <summary>
+        /// Check if text contains caret notation (x^2, e^{n+1})
+        /// </summary>
+        public static bool HasCaretNotation(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return false;
+
+            return CaretNotationRegex.IsMatch(text);
+        }
+
+        /// <summary>
+        /// Check if text contains underscore subscript notation (x_1, a_{i,j})
+        /// </summary>
+        public static bool HasUnderscoreNotation(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return false;
+
+            return UnderscoreSubscriptRegex.IsMatch(text);
+        }
+
+        /// <summary>
+        /// Check if text contains slash fractions (1/2, (a+b)/(c+d))
+        /// </summary>
+        public static bool HasSlashFractions(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return false;
+
+            return FractionRegex.IsMatch(text);
+        }
+
+        /// <summary>
+        /// Check if text contains chemical formulas (H2O, CO2, Ca(OH)2)
+        /// </summary>
+        public static bool HasChemicalFormula(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return false;
+
+            return ChemicalFormulaRegex.IsMatch(text);
+        }
+
+        /// <summary>
+        /// Check if text contains any formattable content (notation or Unicode)
+        /// </summary>
+        public static bool HasFormattableContent(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return false;
+
+            return HasCaretNotation(text) ||
+                   HasUnderscoreNotation(text) ||
+                   HasSlashFractions(text) ||
+                   HasChemicalFormula(text) ||
+                   HasUnicodeScripts(text);
+        }
+
+        /// <summary>
+        /// Check if text needs formatting (has formattable content but not yet formatted)
+        /// </summary>
+        public static bool NeedsFormatting(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return false;
+
+            return HasFormattableContent(text) && !HasFormatting(text);
+        }
+
+        #endregion
+
         /// <summary>
         /// Remove all TMP tags from text (converts to plain text)
         /// </summary>
@@ -410,60 +538,6 @@ namespace AbS
         }
 
         /// <summary>
-        /// Check if text contains TMP formatting
-        /// </summary>
-        public static bool HasFormatting(string text)
-        {
-            if (string.IsNullOrEmpty(text))
-                return false;
-
-            return text.Contains("<sup>") || text.Contains("<sub>") ||
-                   text.Contains("<size=");
-        }
-
-        /// <summary>
-        /// Check if text contains Unicode superscript characters
-        /// </summary>
-        public static bool HasUnicodeSuperscript(string text)
-        {
-            if (string.IsNullOrEmpty(text))
-                return false;
-
-            foreach (char c in text)
-            {
-                if (SuperscriptMap.ContainsKey(c))
-                    return true;
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Check if text contains Unicode subscript characters
-        /// </summary>
-        public static bool HasUnicodeSubscript(string text)
-        {
-            if (string.IsNullOrEmpty(text))
-                return false;
-
-            foreach (char c in text)
-            {
-                if (SubscriptMap.ContainsKey(c))
-                    return true;
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Check if text contains any Unicode superscript or subscript characters
-        /// </summary>
-        public static bool HasUnicodeScripts(string text)
-        {
-            return HasUnicodeSuperscript(text) || HasUnicodeSubscript(text);
-        }
-
-        /// <summary>
         /// Get all Unicode superscript characters found in text
         /// </summary>
         public static List<char> GetUnicodeSuperscripts(string text)
@@ -506,6 +580,90 @@ namespace AbS
 
     public static class TMPTextExtensions
     {
+        #region Pattern Detection Methods
+
+        /// <summary>
+        /// Check if text contains TMP formatting
+        /// </summary>
+        public static bool HasFormattingTMP(this string text)
+        {
+            return TMPNotationEngine.HasFormatting(text);
+        }
+
+        /// <summary>
+        /// Check if text contains Unicode superscript characters
+        /// </summary>
+        public static bool HasUnicodeSuperscriptTMP(this string text)
+        {
+            return TMPNotationEngine.HasUnicodeSuperscript(text);
+        }
+
+        /// <summary>
+        /// Check if text contains Unicode subscript characters
+        /// </summary>
+        public static bool HasUnicodeSubscriptTMP(this string text)
+        {
+            return TMPNotationEngine.HasUnicodeSubscript(text);
+        }
+
+        /// <summary>
+        /// Check if text contains any Unicode superscript or subscript characters
+        /// </summary>
+        public static bool HasUnicodeScriptsTMP(this string text)
+        {
+            return TMPNotationEngine.HasUnicodeScripts(text);
+        }
+
+        /// <summary>
+        /// Check if text contains caret notation
+        /// </summary>
+        public static bool HasCaretNotation(this string text)
+        {
+            return TMPNotationEngine.HasCaretNotation(text);
+        }
+
+        /// <summary>
+        /// Check if text contains underscore notation
+        /// </summary>
+        public static bool HasUnderscoreNotation(this string text)
+        {
+            return TMPNotationEngine.HasUnderscoreNotation(text);
+        }
+
+        /// <summary>
+        /// Check if text contains slash fractions
+        /// </summary>
+        public static bool HasSlashFractions(this string text)
+        {
+            return TMPNotationEngine.HasSlashFractions(text);
+        }
+
+        /// <summary>
+        /// Check if text contains chemical formulas
+        /// </summary>
+        public static bool HasChemicalFormula(this string text)
+        {
+            return TMPNotationEngine.HasChemicalFormula(text);
+        }
+
+        /// <summary>
+        /// Check if text contains any formattable content
+        /// </summary>
+        public static bool HasFormattableContent(this string text)
+        {
+            return TMPNotationEngine.HasFormattableContent(text);
+        }
+
+        /// <summary>
+        /// Check if text needs formatting
+        /// </summary>
+        public static bool NeedsFormatting(this string text)
+        {
+            return TMPNotationEngine.NeedsFormatting(text);
+        }
+
+        #endregion Pattern Detection Methods
+
         /// <summary>
         /// Format string using TMPNotationEngine with default config
         /// </summary>
@@ -562,38 +720,6 @@ namespace AbS
         public static string ToPlainTextTMP(this string text)
         {
             return text == null ? null : TMPNotationEngine.PlainText(text);
-        }
-
-        /// <summary>
-        /// Check if text contains TMP formatting
-        /// </summary>
-        public static bool HasFormattingTMP(this string text)
-        {
-            return TMPNotationEngine.HasFormatting(text);
-        }
-
-        /// <summary>
-        /// Check if text contains Unicode superscript characters
-        /// </summary>
-        public static bool HasUnicodeSuperscriptTMP(this string text)
-        {
-            return TMPNotationEngine.HasUnicodeSuperscript(text);
-        }
-
-        /// <summary>
-        /// Check if text contains Unicode subscript characters
-        /// </summary>
-        public static bool HasUnicodeSubscriptTMP(this string text)
-        {
-            return TMPNotationEngine.HasUnicodeSubscript(text);
-        }
-
-        /// <summary>
-        /// Check if text contains any Unicode superscript or subscript characters
-        /// </summary>
-        public static bool HasUnicodeScriptsTMP(this string text)
-        {
-            return TMPNotationEngine.HasUnicodeScripts(text);
         }
 
         /// <summary>
